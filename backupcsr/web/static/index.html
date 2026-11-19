@@ -10,9 +10,9 @@
 	<script src="/theme.js?v=3"></script>
 	<link rel="stylesheet" href="/vendor/bootstrap/bootstrap.min.css">
 	<link rel="stylesheet" href="/vendor/fontawesome/css/all.min.css">
-	<link rel="stylesheet" href="/style.css?v=12">
+	<link rel="stylesheet" href="/style.css?v=13">
 	<script src="/vendor/bootstrap/bootstrap.bundle.min.js" defer></script>
-	<script type="module" src="/js/shell.js?v=16"></script>
+	<script type="module" src="/js/shell.js?v=17"></script>
 </head>
 
 <body>
@@ -186,6 +186,16 @@
 						programación, y el menú <strong>⋮</strong> reúne las acciones de cada tarea.
 						Mientras una copia corre, su barra de progreso aparece en <strong>Estado</strong>.
 					</p>
+
+					<div class="d-flex align-items-center justify-content-between mb-2 mt-4 gap-2 flex-wrap">
+						<h2 class="h6 mb-0">Estadísticas</h2>
+						<div class="btn-group btn-group-sm" role="group" aria-label="Ventana de estadísticas"
+							id="stats-window">
+							<button type="button" class="btn btn-outline-secondary" data-days="7">7 días</button>
+							<button type="button" class="btn btn-outline-secondary active" data-days="30">30 días</button>
+						</div>
+					</div>
+					<div class="row row-cols-1 row-cols-md-2 row-cols-xxl-3 g-3" id="stats-row"></div>
 				</section>
 
 				<!-- ---------------------------- Historial ---------------------------- -->

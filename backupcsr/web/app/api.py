@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from . import (
     auth, batch, catalog, config, credentials, cronfile, db, files, jobgen, logs, runner, sizes,
+    stats,
 )
 
 log = logging.getLogger("backupcsr-web")
@@ -1011,7 +1012,7 @@ async def summary(user: dict = Depends(auth.current_user)):
     durations = [
         job["last_run"]["duration_s"]
         for job in jobs
-        if job.get("last_run") and job["last_run"].get("duration_s")
+        if job.get("enabled") and job.get("last_run") and job["last_run"].get("duration_s")
     ]
     return {
         "counts": counts,
@@ -1915,6 +1916,14 @@ async def size_series(
     days: int = Query(30, ge=1, le=365), user: dict = Depends(auth.current_user)
 ):
     return {"days": days, "series": sizes.series(days)}
+
+
+@router.get("/stats")
+async def history_stats(
+    days: int = Query(30, ge=7, le=365), user: dict = Depends(auth.current_user)
+):
+    """Agregados históricos 7/30 días; solo tareas habilitadas y sin dry-run."""
+    return stats.history(effective_jobs(), days)
 
 
 # ------------------------------ usuarios ----------------------------------

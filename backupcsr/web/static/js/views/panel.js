@@ -12,7 +12,7 @@ import {
   $, el, pill, fmtGb, fmtDate, fmtDuration, relTime,
   relTimeFuture, scheduleText, toast, confirmDialog, statusClass, statusLabel,
 } from '../ui.js';
-import { sparkline, barList, emptyChart, diskGauge } from '../chart.js';
+import { sparkline, barList, emptyChart, diskGauge, stackedDaily } from '../chart.js?v=13';
 
 let ctxRef = null;
 let tickTimer = null;
@@ -218,7 +218,7 @@ function renderCharts(state) {
   }
 
   const durations = jobs
-    .filter((job) => job.last_run && job.last_run.duration_s)
+    .filter((job) => job.enabled && job.last_run && job.last_run.duration_s)
     .map((job) => ({ label: job.name, value: job.last_run.duration_s }))
     .sort((a, b) => b.value - a.value);
   const durationBox = $('chart-duration');
@@ -235,6 +235,290 @@ function renderSummary(state) {
   renderKpis(summary);
   renderNas(summary, state);
   renderCharts(state);
+  renderStats(state);
+}
+
+/* ------------------------------ estadísticas ------------------------------ */
+
+const STATUS_CARD = [
+  { key: 'OK', label: 'OK', cls: 'ok' },
+  { key: 'TARDE', label: 'Tarde', cls: 'warn' },
+  { key: 'PARCIAL', label: 'Parcial', cls: 'warn' },
+  { key: 'FALLO', label: 'Fallo', cls: 'err' },
+  { key: 'NUNCA', label: 'Sin datos', cls: 'muted' },
+  { key: 'OMITIDO', label: 'Omitido', cls: 'muted' },
+  { key: 'EN_CURSO', label: 'En curso', cls: 'accent' },
+];
+
+const HISTORY_KEYS = [
+  { key: 'OK', label: 'OK', cls: 'ok' },
+  { key: 'PARCIAL', label: 'Parcial', cls: 'warn' },
+  { key: 'INCIERTO', label: 'Incierto', cls: 'muted' },
+  { key: 'FALLO', label: 'Fallo', cls: 'err' },
+  { key: 'OMITIDO', label: 'Omitido', cls: 'muted' },
+  { key: 'EN_CURSO', label: 'En curso', cls: 'accent' },
+];
+
+const FILE_KEYS = [
+  { key: 'files_transferred', label: 'Transferidos', cls: 'accent' },
+  { key: 'files_removed', label: 'Borrados', cls: 'muted' },
+];
+
+function htmlBlock(html) {
+  const node = el('div');
+  node.innerHTML = html;
+  return node;
+}
+
+function statCard(title, content) {
+  const body = el('div', { class: 'card-body' });
+  body.appendChild(el('div', { class: 'chart-title mb-2', text: title }));
+  const parts = Array.isArray(content) ? content : [content];
+  parts.forEach((part) => {
+    if (!part) return;
+    body.appendChild(typeof part === 'string' ? htmlBlock(part) : part);
+  });
+  return el('div', { class: 'col' }, [
+    el('div', { class: 'card chart-card h-100' }, [body]),
+  ]);
+}
+
+function statusCard(jobs) {
+  const title = 'Estado de copias activas';
+  if (!jobs.length) return statCard(title, emptyChart('sin copias activas'));
+  const counts = {};
+  STATUS_CARD.forEach((item) => { counts[item.key] = 0; });
+  jobs.forEach((job) => { counts[job.status] = (counts[job.status] || 0) + 1; });
+  const total = jobs.length;
+  const stack = el('div', {
+    class: 'stat-stack', role: 'img', 'aria-label': 'Distribución de estados',
+  });
+  STATUS_CARD.forEach((item) => {
+    const value = counts[item.key] || 0;
+    if (!value) return;
+    stack.appendChild(el('span', {
+      class: 'stat-seg ' + item.cls,
+      style: 'width:' + (value * 100 / total).toFixed(2) + '%',
+      title: item.label + ': ' + value,
+    }));
+  });
+  const legend = el('div', { class: 'stat-legend mt-2' }, STATUS_CARD.map((item) => (
+    el('span', { class: item.cls }, [
+      el('i'), el('span', { text: item.label + ': ' + (counts[item.key] || 0) }),
+    ])
+  )));
+  return statCard(title, [
+    stack,
+    legend,
+    el('div', { class: 'small muted mt-2', text: total + ' tareas habilitadas' }),
+  ]);
+}
+
+function sizeCard(jobs) {
+  const title = 'Tamaño por tarea';
+  const measured = jobs
+    .filter((job) => job.size && job.size.bytes !== null && job.size.bytes !== undefined
+      && Number(job.size.bytes) > 0)
+    .sort((a, b) => Number(b.size.bytes) - Number(a.size.bytes));
+  if (!measured.length) return statCard(title, emptyChart('sin tamaños medidos'));
+  const total = measured.reduce((sum, job) => sum + Number(job.size.bytes), 0);
+  const items = measured.slice(0, 8).map((job) => ({ label: job.name, value: Number(job.size.bytes) }));
+  const missing = jobs.length - measured.length;
+  return statCard(title, [
+    htmlBlock(barList(items, (value) => (
+      fmtGb(value) + ' · ' + (value * 100 / total).toFixed(1) + '%'
+    ))),
+    el('div', {
+      class: 'small muted mt-1',
+      text: missing
+        ? missing + ' tarea' + (missing === 1 ? '' : 's') + ' sin medición'
+        : 'Todas las tareas activas tienen tamaño medido',
+    }),
+  ]);
+}
+
+function upcomingCard(jobs) {
+  const title = 'Próximas 24 horas';
+  const now = Date.now();
+  const horizon = now + 24 * 60 * 60 * 1000;
+  const upcoming = jobs
+    .filter((job) => job.next_run && !isNaN(new Date(job.next_run).getTime()))
+    .map((job) => ({ job, ts: new Date(job.next_run).getTime() }))
+    .filter((item) => item.ts >= now && item.ts <= horizon)
+    .sort((a, b) => a.ts - b.ts);
+  const overdue = jobs.filter((job) => {
+    if (!job.next_run) return false;
+    const ts = new Date(job.next_run).getTime();
+    return !isNaN(ts) && ts < now;
+  }).length;
+  if (!upcoming.length) {
+    return statCard(title, emptyChart(overdue
+      ? 'sin ejecuciones en 24 h · ' + overdue + ' vencida' + (overdue === 1 ? '' : 's')
+      : 'sin ejecuciones programadas en 24 h'));
+  }
+  const rows = upcoming.slice(0, 5).map((item) => (
+    el('div', { class: 'stat-row' }, [
+      el('span', { text: item.job.name }),
+      el('b', { text: relTimeFuture(item.job.next_run) }),
+    ])
+  ));
+  return statCard(title, [
+    el('div', { class: 'd-flex align-items-baseline gap-2 mb-1' }, [
+      el('div', { class: 'stat-kpi', text: String(upcoming.length) }),
+      el('div', {
+        class: 'small muted',
+        text: 'ejecución' + (upcoming.length === 1 ? '' : 'es')
+          + (overdue ? ' · ' + overdue + ' vencida' + (overdue === 1 ? '' : 's') : ''),
+      }),
+    ]),
+    ...rows,
+  ]);
+}
+
+function healthRow(label, value) {
+  return el('div', { class: 'stat-row' }, [
+    el('span', { text: label }),
+    el('b', {
+      class: 'badge rounded-pill ' + (value ? 'pill-warn' : 'pill-ok'),
+      text: String(value),
+    }),
+  ]);
+}
+
+function healthCard(jobs, disabled) {
+  const title = 'Salud de configuración';
+  const pending = jobs.filter((job) => job.size && job.size.pending).length;
+  const unmeasured = jobs.filter((job) => (
+    !job.size || ((job.size.bytes === null || job.size.bytes === undefined) && !job.size.pending)
+  )).length;
+  const drift = jobs.filter((job) => job.schedule_drift).length;
+  const omitted = jobs.filter((job) => Number(job.omitted_consecutive) >= 3).length;
+  const noRetention = jobs.filter((job) => !job.retention_days).length;
+  return statCard(title, [
+    healthRow('Sin tamaño medido', unmeasured),
+    healthRow('Con desvío de horario', drift),
+    healthRow('Con 3+ omisiones seguidas', omitted),
+    healthRow('Sin retención definida', noRetention),
+    el('div', {
+      class: 'small muted mt-2',
+      text: (disabled ? disabled + ' deshabilitadas fuera de las estadísticas' : 'Solo tareas habilitadas')
+        + (pending ? ' · ' + pending + ' midiendo ahora' : ''),
+    }),
+  ]);
+}
+
+function historyWindow(state) {
+  const stats = state.stats;
+  if (!stats) return null;
+  const days = Number(state.statsDays) === 7 ? 7 : 30;
+  const window = (stats.windows || {})['d' + days];
+  return window ? { stats, days, window } : null;
+}
+
+function historyGate(state, title) {
+  const days = Number(state.statsDays) === 7 ? 7 : 30;
+  const fullTitle = title + ' ' + days + ' días';
+  if (!state.statsLoaded) return statCard(fullTitle, emptyChart('cargando histórico…'));
+  if (state.statsError) {
+    return statCard(fullTitle, el('div', {
+      class: 'chart-empty', text: 'histórico no disponible: ' + state.statsError,
+    }));
+  }
+  if (!historyWindow(state)) return statCard(fullTitle, emptyChart('sin histórico'));
+  return null;
+}
+
+function successCard(state) {
+  const gate = historyGate(state, 'Éxito');
+  if (gate) return gate;
+  const { stats, days, window } = historyWindow(state);
+  const counts = window.counts || {};
+  const rate = window.success_rate;
+  const daily = (stats.daily || []).slice(-days).map((day) => ({
+    date: day.date, values: day.counts || {},
+  }));
+  const legend = el('div', { class: 'stat-legend mt-2' }, [
+    el('span', { class: 'ok' }, [el('i'), el('span', { text: 'OK: ' + (counts.OK || 0) })]),
+    el('span', { class: 'err' }, [el('i'), el('span', { text: 'Fallos: ' + (counts.FALLO || 0) })]),
+    el('span', { class: 'warn' }, [el('i'), el('span', { text: 'Parciales: ' + (counts.PARCIAL || 0) })]),
+    el('span', { class: 'muted' }, [el('i'), el('span', { text: 'Omitidas: ' + (counts.OMITIDO || 0) })]),
+  ]);
+  return statCard('Éxito ' + days + ' días', [
+    el('div', { class: 'd-flex align-items-baseline gap-2' }, [
+      el('div', { class: 'stat-kpi', text: rate === null || rate === undefined ? '—' : rate.toFixed(1) + '%' }),
+      el('div', {
+        class: 'small muted',
+        text: (window.completed || 0) + ' completadas'
+          + (stats.source === 'logs' ? ' · desde logs' : ''),
+      }),
+    ]),
+    legend,
+    htmlBlock(stackedDaily(daily, HISTORY_KEYS)),
+  ]);
+}
+
+function durationCard(state) {
+  const gate = historyGate(state, 'Duración típica');
+  if (gate) return gate;
+  const { days, stats } = historyWindow(state);
+  const items = (stats.jobs || [])
+    .filter((job) => job.p95_s !== null && job.p95_s !== undefined)
+    .slice(0, 8)
+    .map((job) => ({
+      label: job.name + (job.p50_s !== null && job.p50_s !== undefined
+        ? ' · p50 ' + fmtDuration(job.p50_s) : ''),
+      value: job.p95_s,
+    }));
+  if (!items.length) return statCard('Duración típica ' + days + ' días',
+    emptyChart('sin duraciones OK en la ventana'));
+  return statCard('Duración típica ' + days + ' días', [
+    htmlBlock(barList(items, fmtDuration)),
+    el('div', { class: 'small muted mt-1', text: 'p95 de corridas OK; p50 en la etiqueta' }),
+  ]);
+}
+
+function filesCard(state) {
+  const gate = historyGate(state, 'Archivos');
+  if (gate) return gate;
+  const { stats, days, window } = historyWindow(state);
+  const transferred = Number(window.files_transferred) || 0;
+  const removed = Number(window.files_removed) || 0;
+  if (!transferred && !removed) {
+    return statCard('Archivos ' + days + ' días',
+      emptyChart('sin archivos transferidos en la ventana'));
+  }
+  const daily = (stats.daily || []).slice(-days).map((day) => ({
+    date: day.date,
+    values: {
+      files_transferred: day.files_transferred || 0,
+      files_removed: day.files_removed || 0,
+    },
+  }));
+  return statCard('Archivos ' + days + ' días', [
+    el('div', { class: 'd-flex align-items-baseline gap-2' }, [
+      el('div', { class: 'stat-kpi', text: transferred.toLocaleString('es-CO') }),
+      el('div', { class: 'small muted', text: 'transferidos' }),
+      el('div', { class: 'ms-auto small muted', text: removed.toLocaleString('es-CO') + ' borrados' }),
+    ]),
+    htmlBlock(stackedDaily(daily, FILE_KEYS)),
+  ]);
+}
+
+function renderStats(state) {
+  const box = $('stats-row');
+  if (!box) return;
+  const jobs = panelJobs(state);
+  const counts = (state.summary && state.summary.counts) || {};
+  const cards = [
+    statusCard(jobs),
+    sizeCard(jobs),
+    upcomingCard(jobs),
+    healthCard(jobs, counts.DESHABILITADA || 0),
+    successCard(state),
+    durationCard(state),
+    filesCard(state),
+  ];
+  box.replaceChildren(...cards);
 }
 
 /* ------------------------------ tabla de jobs ------------------------------ */
@@ -923,6 +1207,19 @@ export const panel = {
     // descarta el autofill del navegador.
     const selectJob = $('chart-job');
     if (selectJob) selectJob.addEventListener('change', () => renderCharts(ctxRef.state));
+    const statsWindow = $('stats-window');
+    if (statsWindow) {
+      statsWindow.addEventListener('click', (event) => {
+        const button = event.target.closest('button[data-days]');
+        if (!button) return;
+        const days = Number(button.getAttribute('data-days')) === 7 ? 7 : 30;
+        ctxRef.state.statsDays = days;
+        statsWindow.querySelectorAll('button[data-days]').forEach((item) => {
+          item.classList.toggle('active', item === button);
+        });
+        renderStats(ctxRef.state);
+      });
+    }
     const newButton = $('jobs-new');
     if (newButton) newButton.addEventListener('click', () => ctxRef.openNewJob());
   },

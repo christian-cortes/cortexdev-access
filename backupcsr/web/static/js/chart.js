@@ -19,8 +19,9 @@ export function emptyChart(text) {
 }
 
 /** points: [{t, v}] ordenados por t. */
-export function sparkline(points) {
+export function sparkline(points, formatter) {
   if (!points || points.length < 2) return emptyChart('sin histórico suficiente');
+  const format = formatter || fmtGb;
   const W = 320, H = 64, padX = 4, padY = 8;
   const values = clean(points.map((p) => Number(p.v)));
   if (!values.length) return emptyChart('sin datos de tamaño');
@@ -50,7 +51,35 @@ export function sparkline(points) {
     '<text class="label" x="' + (W - padX) + '" y="' + (H - 1) + '" text-anchor="end">' + last + '</text>' +
     '</svg>' +
     '<div class="d-flex justify-content-between small muted mt-1">' +
-    '<span>mín ' + fmtGb(min) + '</span><span>máx ' + fmtGb(max) + '</span></div>';
+    '<span>mín ' + format(min) + '</span><span>máx ' + format(max) + '</span></div>';
+}
+
+/**
+ * Mini columnas diarias apiladas. `items`: [{date, values: {key: number}}].
+ * `keys`: [{key, label, cls}] en orden de abajo hacia arriba.
+ */
+export function stackedDaily(items, keys) {
+  if (!items || !items.length) return emptyChart('sin ejecuciones en la ventana');
+  const series = keys || [];
+  const totals = items.map((item) => series.reduce(
+    (sum, key) => sum + (Number((item.values || {})[key.key]) || 0), 0
+  ));
+  const max = Math.max.apply(null, totals) || 0;
+  if (!max) return emptyChart('sin ejecuciones en la ventana');
+  const columns = items.map((item, index) => {
+    const values = item.values || {};
+    const total = totals[index];
+    const parts = series.map((key) => {
+      const value = Number(values[key.key]) || 0;
+      if (!value) return '';
+      const height = (value * 100 / max).toFixed(1);
+      return '<span class="stat-seg ' + (key.cls || '') + '" style="height:' + height + '%" ' +
+        'title="' + key.label + ': ' + value + '"></span>';
+    }).join('');
+    const title = item.date + ' · ' + total + ' ejecución' + (total === 1 ? '' : 'es');
+    return '<div class="stat-day" title="' + title + '">' + parts + '</div>';
+  }).join('');
+  return '<div class="stat-days" role="img" aria-label="Ejecuciones por día">' + columns + '</div>';
 }
 
 /** items: [{label, value}] value en segundos. */

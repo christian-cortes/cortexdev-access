@@ -5,7 +5,7 @@ import {
   $, el, icon, pill, fmtDate, fmtDuration, fmtGb, relTime, toast, confirmDialog,
   openModal, hideModal,
 } from './ui.js';
-import { panel } from './views/panel.js?v=16';
+import { panel } from './views/panel.js?v=17';
 import { history } from './views/history.js';
 import { files } from './views/files.js';
 import { schedule, openEditor } from './views/schedule.js';
@@ -23,6 +23,11 @@ const state = {
   manageJobs: false,
   series: [],
   seriesLoaded: false,
+  stats: null,
+  statsLoaded: false,
+  statsError: '',
+  statsDays: 30,
+  statsAt: 0,
   tab: 'panel',
   histJob: '',
   filesJob: '',
@@ -200,6 +205,22 @@ async function loadSeries() {
   } catch (e) {
     state.seriesLoaded = true;
   }
+}
+
+/* Histórico de 7/30 días: se pide al entrar al Panel y se reutiliza mientras no
+   supere 5 minutos; el selector de ventana no vuelve a consultar el endpoint. */
+async function loadStats(force) {
+  const fresh = state.statsLoaded && !state.statsError
+    && (Date.now() - state.statsAt) < 5 * 60 * 1000;
+  if (!force && fresh) return;
+  try {
+    state.stats = await api.get('/stats?days=30');
+    state.statsError = '';
+  } catch (e) {
+    state.statsError = describeError(e);
+  }
+  state.statsLoaded = true;
+  state.statsAt = Date.now();
 }
 
 /* Cola de acciones masivas (en memoria del backend): se consulta en cada refresco
@@ -516,10 +537,18 @@ function activate(name) {
   ensureMounted(view);
   safeRender(view);
   refreshBanner();
-  if (view.id === 'panel' && !state.seriesLoaded) {
-    loadSeries().then(() => {
-      if (state.tab === 'panel') safeRender(view);
-    });
+  if (view.id === 'panel') {
+    const pending = [];
+    if (!state.seriesLoaded) pending.push(loadSeries());
+    if (!state.statsLoaded || state.statsError
+      || (Date.now() - state.statsAt) >= 5 * 60 * 1000) {
+      pending.push(loadStats());
+    }
+    if (pending.length) {
+      Promise.all(pending).then(() => {
+        if (state.tab === 'panel') safeRender(view);
+      });
+    }
   }
 }
 
@@ -805,7 +834,7 @@ window.__backupcsr = {
   state,
   reload: () => loadAll(false),
   bootstrap,
-  version: '5',
+  version: '6',
 };
 
 (async function init() {

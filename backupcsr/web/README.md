@@ -10,6 +10,10 @@ con `backups.cortexdev.win`/`pbs`, que es Proxmox Backup Server).
   7/30 días, jobs OK/fallidos, duración media, NAS libre), gráficos de tendencia y tabla de jobs
   con estado (OK / EN CURSO / TARDE / FALLÓ / NUNCA / DESHABILITADA), **progreso**, tamaño,
   última y próxima ejecución.
+  Bajo la tabla hay una sección de **estadísticas** con estado de las copias activas, tamaño por
+  tarea, próximas 24 h, salud de configuración, éxito de 7/30 días, duración típica (p50/p95) y
+  archivos transferidos/borrados. Las estadísticas ignoran las tareas deshabilitadas y los
+  dry-run.
   La tabla usa **selección múltiple estilo DataTables** (clic selecciona, Ctrl/Cmd+clic alterna,
   Mayús+clic toma un rango; sin casillas por fila) y **acciones masivas** en la barra superior
   (ejecutar, reintentar fallidas, dry-run, medir tamaños, habilitar/deshabilitar, exportar CSV),
@@ -254,6 +258,8 @@ Todo bajo `/api/`, con sesión salvo `/api/health` y `/api/auth/login`.
 
 - `GET /api/health`, `GET /api/summary`, `GET /api/jobs`, `GET /api/jobs/{slug}`
 - `GET /api/sizes?days=30` (series de tamaño), `POST /api/jobs/{slug}/size/refresh` (admin)
+- `GET /api/stats?days=30` (agregados de 7/30 días: éxito, duración p50/p95 y archivos;
+  solo tareas habilitadas y sin dry-run)
 - `POST /api/jobs/{slug}/run` `{dry_run,retry}` (admin), `PATCH /api/jobs/{slug}` (admin; la ficha
   solo exige admin, `enabled`/cron/`lockfile` exigen `MANAGE_CRON`),
   `POST /api/jobs/{slug}/reset-schedule` (admin), `GET /api/jobs/{slug}/cron-preview` (admin),
