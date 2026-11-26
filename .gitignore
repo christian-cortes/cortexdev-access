@@ -8,6 +8,7 @@ backend/data/
 
 # Portal generado desde catalog.yml (scripts/build-portal.py).
 portal/dist/
+portal/dist*
 
 # Secretos de monitoring (clave admin de Grafana). Usar .env.example como plantilla.
 .env
