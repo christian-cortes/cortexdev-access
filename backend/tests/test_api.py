@@ -6,6 +6,7 @@ import tempfile
 import unittest
 import asyncio
 from pathlib import Path
+from unittest.mock import patch
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -25,6 +26,7 @@ CATALOG = {
             "name": "Uno",
             "category": "cat",
             "url": "https://uno.example",
+            "icon": "uno.png",
             "note": '<script>alert(1)</script><a href="javascript:alert(2)">x</a>',
         }
     ],
@@ -78,6 +80,28 @@ class ApiTests(unittest.TestCase):
         response = self.client.get("/api/status")
         self.assertEqual(response.headers["cache-control"], "no-store")
 
+    def test_external_projects_and_notification_scopes(self):
+        with db.db() as conn:
+            conn.execute("UPDATE external_projects SET local_slug = 'uno' WHERE id = 1")
+            conn.execute(
+                "UPDATE external_projects SET icon_data = ?, icon_type = ?, icon_checked_url = url WHERE id = 2",
+                (b"example", "image/png"),
+            )
+        response = self.client.get("/api/external-projects")
+        self.assertEqual(response.status_code, 200)
+        projects = response.json()["projects"]
+        self.assertEqual(len(projects), 21)
+        self.assertEqual({p["company"] for p in projects},
+                         {"Clinica San Rafael", "Ruta 56", "Ticware", "Enter"})
+        self.assertEqual(next(p for p in projects if p["id"] == 1)["icon"], "uno.png")
+        self.assertIsNone(next(p for p in projects if p["name"] == "Daruma")["icon"])
+        self.assertEqual(next(p for p in projects if p["id"] == 2)["icon_url"],
+                         "/api/external-projects/2/icon")
+        self.assertEqual(self.client.get("/api/external-projects/2/icon").content, b"example")
+        self.assertEqual(self.client.get("/api/external-projects/3/icon").status_code, 404)
+        scopes = self.client.get("/api/scopes").json()["scopes"]
+        self.assertIn("external-1", [scope["slug"] for scope in scopes])
+
     def test_failed_checks_commit_offline_and_open_incidents(self):
         async def fake(services):
             return [
@@ -92,8 +116,9 @@ class ApiTests(unittest.TestCase):
             ]
 
         main.probe.probe_all = fake
-        for _ in range(3):
-            self.assertTrue(asyncio.run(main.run_checks()))
+        with patch.object(main.external_icons, "refresh"):
+            for _ in range(3):
+                self.assertTrue(asyncio.run(main.run_checks()))
         body = self.client.get("/api/status").json()
         self.assertEqual(body["statuses"]["uno"]["state"], "offline")
         self.assertEqual(body["statuses"]["uno"]["last_state"], "offline")

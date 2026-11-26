@@ -146,6 +146,7 @@ def main():
     app_asset = asset("app.js")
     render_asset = asset("render.js")
     theme_asset = asset("theme.js")
+    external_asset = asset("external-projects.js")
     asset_version = style_asset.rsplit(".", 2)[1]
 
     for name in ("login.html", "login.css", "login.js", "push-client.js", "firebase-messaging-sw.js"):
@@ -163,6 +164,7 @@ def main():
         "app_asset": app_asset,
         "render_asset": render_asset,
         "theme_asset": theme_asset,
+        "external_asset": external_asset,
         "nav_categories": nav_categories,
     }
 
@@ -208,6 +210,17 @@ def main():
         footer_note="Notificaciones",
     )
     (out / "notificaciones.html").write_text(notif, encoding="utf-8")
+
+    external = env.get_template("pages/proyectos-externos.html").render(
+        **common,
+        page_title="CortexDev · Proyectos externos",
+        brand_title="Proyectos externos",
+        brand_subtitle="Estado de los proyectos por empresa",
+        active_nav="proyectos-externos",
+        is_index=False,
+        footer_note="Proyectos externos",
+    )
+    (out / "proyectos-externos.html").write_text(external, encoding="utf-8")
 
     print(f"portal generado en {out}: {len(services)} servicios, {len(categories)} categorías")
 

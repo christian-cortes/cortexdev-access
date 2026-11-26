@@ -12,7 +12,7 @@ DEFAULT_DB_PATH = "/data/portal.db"
 CATALOG_PATH = os.environ.get("CATALOG_PATH", str(BASE_DIR / "catalog.yml"))
 RETENTION_DAYS = int(os.environ.get("RETENTION_DAYS", "7"))
 HOURLY_RETENTION_DAYS = int(os.environ.get("HOURLY_RETENTION_DAYS", "90"))
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 6
 
 DEFAULT_ACCEPT = [200, 301, 302, 303, 307, 308, 401, 403]
 
@@ -82,6 +82,29 @@ CREATE TABLE IF NOT EXISTS incidents (
 );
 CREATE INDEX IF NOT EXISTS incidents_started ON incidents(started_at);
 CREATE INDEX IF NOT EXISTS incidents_open ON incidents(service_id, ended_at);
+
+CREATE TABLE IF NOT EXISTS external_projects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    company TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    local_slug TEXT,
+    icon_data BLOB,
+    icon_type TEXT,
+    icon_checked_at TEXT,
+    icon_checked_url TEXT,
+    active INTEGER NOT NULL DEFAULT 1,
+    state TEXT NOT NULL DEFAULT 'unknown',
+    state_since TEXT,
+    checked_url TEXT,
+    checked_at TEXT,
+    last_state TEXT,
+    code INTEGER,
+    latency_ms INTEGER,
+    error TEXT,
+    failures INTEGER NOT NULL DEFAULT 0,
+    successes INTEGER NOT NULL DEFAULT 0
+);
 """
 
 
@@ -197,6 +220,26 @@ def _migrate(conn):
             "ON incidents(kind) WHERE ended_at IS NULL AND kind = 'infra'"
         )
         conn.execute("PRAGMA user_version = 3")
+        version = 3
+
+    if version < 4:
+        conn.execute("PRAGMA user_version = 4")
+        version = 4
+
+    if version < 5:
+        if "local_slug" not in _table_info(conn, "external_projects"):
+            conn.execute("ALTER TABLE external_projects ADD COLUMN local_slug TEXT")
+        conn.execute("PRAGMA user_version = 5")
+        version = 5
+
+    if version < 6:
+        for column, kind in (
+            ("icon_data", "BLOB"), ("icon_type", "TEXT"),
+            ("icon_checked_at", "TEXT"), ("icon_checked_url", "TEXT"),
+        ):
+            if column not in _table_info(conn, "external_projects"):
+                conn.execute(f"ALTER TABLE external_projects ADD COLUMN {column} {kind}")
+        conn.execute("PRAGMA user_version = 6")
 
 
 def _close_duplicate_incidents(conn):

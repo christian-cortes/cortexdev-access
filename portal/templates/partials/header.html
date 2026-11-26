@@ -11,6 +11,7 @@
 		{% for item in nav_categories %}
 		<a class="nav-link{% if active_nav == item.slug %} active{% endif %}" href="{{ item.url }}">{{ item.title }}</a>
 		{% endfor %}
+		<a class="nav-link{% if active_nav == 'proyectos-externos' %} active{% endif %}" href="/proyectos-externos.html">Proyectos externos</a>
 		<a class="nav-link{% if active_nav == 'notificaciones' %} active{% endif %}" href="/notificaciones.html">Notificaciones</a>
 	</nav>
 </header>

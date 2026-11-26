@@ -1,0 +1,29 @@
+- company: Clinica San Rafael
+  projects:
+    - {name: Centro de Apoyo, url: 'https://socimedicostools.com/centro-apoyo/', local_slug: centro-apoyo}
+    - {name: Daruma, url: 'https://daruma302.socimedicostools.info/app.php/staff'}
+    - {name: Ventanilla Unica, url: 'https://socimedicostools.com/ventanillaunica/'}
+    - {name: Digitalización, url: 'https://socimedicostools.com/historiasclinicas/', local_slug: historias-clinicas}
+    - {name: Matriz Legal, url: 'https://socimedicostools.com/matrizlegal/'}
+    - {name: Conocimiento, url: 'https://socimedicostools.com/conocimiento/'}
+    - {name: Nomina, url: 'https://socimedicostools.com/centro-apoyo-csr/login'}
+    - {name: Auditor, url: 'https://socimedicostools.com/adh/public/login'}
+    - {name: Sarlaft, url: 'https://socimedicostools.com/sarlaft/login', local_slug: sarlaft}
+    - {name: Bot, url: 'https://socimedicostools.com/bot_gomedisys/', local_slug: bot-gomedisys}
+    - {name: SAPG, url: 'https://socimedicostools.com/sapg/', local_slug: sapg-laravel}
+    - {name: Socimedicos, url: 'https://socimedicostools.info/'}
+    - {name: Lenus DataHub, url: 'https://socimedicostools.com/datahublenus/'}
+    - {name: Admin Portal Pacientes, url: 'https://admin-portal.misanrafael.com/dashboard', local_slug: admin-portal-pacientes}
+    - {name: Portal Pacientes, url: 'https://misanrafael.com/login', local_slug: portal-pacientes}
+    - {name: Admin App, url: 'https://admin-app.misanrafael.com/admin/login', local_slug: app-admin}
+    - {name: Empleados App, url: 'https://empleados.misanrafael.com/ingreso', local_slug: app-admin}
+- company: Ruta 56
+  projects:
+    - {name: Ruta 56, url: 'https://ruta56pay.net', local_slug: ruta56}
+- company: Ticware
+  projects:
+    - {name: Cafezam, url: 'https://erp.cafezam.com.co/', local_slug: cafezam}
+    - {name: Coopsercont, url: 'https://coopsercont.com.co/', local_slug: coopsercont}
+- company: Enter
+  projects:
+    - {name: Enter, url: 'https://162.240.166.173/', local_slug: enter}

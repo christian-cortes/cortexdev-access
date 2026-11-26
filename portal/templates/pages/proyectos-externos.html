@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="section-title">Disponibilidad de proyectos por empresa</div>
+<p class="small text-body-secondary">Las caídas se confirman después de varios intentos. Los redireccionamientos y las respuestas de autenticación se consideran disponibles.</p>
+<div id="external-error" class="alert alert-warning" role="alert" hidden></div>
+<div id="external-projects" aria-live="polite">
+	<p class="text-body-secondary">Consultando proyectos…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/{{ external_asset }}" defer></script>
+{% endblock %}

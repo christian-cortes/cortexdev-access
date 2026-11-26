@@ -18,6 +18,7 @@ nginx/conf.d/
 portal/                            # portal (shells HTML + render.js, favicons, iconos)
 backend/                           # portal-api: FastAPI + SQLite (catalogo y estado)
 backend/catalog.yml                # catalogo de servicios (fuente de verdad, se edita aqui)
+backend/external-projects.yml      # datos iniciales de proyectos externos (solo primera carga)
 monitoring/prometheus/             # prometheus.yml + reglas de alertas (Netdata)
 monitoring/grafana/                # provisioning (datasource + dashboards) y el dashboard
 .env.example                       # plantilla de credenciales de Grafana (.env gitignored)
@@ -79,6 +80,37 @@ El certificado real se emite con `scripts/install-win-cert.sh --issue` (ver
 ```bash
 scripts/deploy.sh                 # git pull + docker compose up -d --build
 ```
+
+## Proyectos externos
+
+La pestaña **Proyectos externos** agrupa los proyectos por empresa y los sondea
+con el intervalo y los umbrales del portal (por defecto, tres fallos para declarar
+una caída y dos éxitos para recuperación). Los eventos utilizan las preferencias
+de notificaciones del área Portal, configurables también por proyecto. Los
+redireccionamientos y las respuestas 401/403 se consideran disponibles; se
+verifica el certificado TLS y un certificado inválido se reporta como fallo.
+
+La primera inicialización importa `backend/external-projects.yml` a la tabla
+`external_projects` de `backend/data/portal.db`. Después la base de datos es la
+fuente de verdad y los reinicios no sobrescriben los cambios. Para editar mediante
+SQLite, por ejemplo:
+
+```sql
+SELECT id, company, name, url, active FROM external_projects ORDER BY company, id;
+UPDATE external_projects SET name = 'Nuevo nombre', url = 'https://ejemplo.com/' WHERE id = 1;
+UPDATE external_projects SET local_slug = 'centro-apoyo' WHERE id = 1;
+UPDATE external_projects SET active = 0 WHERE id = 1;
+INSERT INTO external_projects (company, name, url) VALUES ('Empresa', 'Proyecto', 'https://ejemplo.com/');
+```
+
+Use solo URL HTTP(S). Los cambios se reflejan en el siguiente sondeo; cambiar la
+URL reinicia su estado y las rachas de comprobaciones. Los avisos push/correo
+requieren que el servicio de notificaciones esté configurado y habilitado.
+`local_slug` vincula un proyecto al slug del catálogo interno y reutiliza su
+favicon; use NULL cuando no exista una plataforma local equivalente.
+Si no hay icono local, el servidor busca el favicon en la página del proyecto,
+lo guarda en SQLite y lo sirve desde el portal. La búsqueda se repite diariamente;
+se admiten imágenes PNG, ICO, JPEG, GIF y WebP del mismo dominio.
 
 ## Validar
 

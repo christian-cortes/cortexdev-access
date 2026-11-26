@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from . import catalog as catalog_mod
-from . import db, incidents, notify, probe, stats, windows
+from . import db, external, external_icons, incidents, notify, probe, stats, windows
 from . import status as status_logic
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -90,6 +90,12 @@ async def run_checks(already_claimed=False):
         stats.record_entries(entries)
         db.rollup_checks()
         _report_transitions(db.latest_samples())
+        await external.run_checks()
+        local_icons = {
+            service["slug"] for service in state.catalog.get("services", [])
+            if service.get("icon")
+        }
+        await external_icons.refresh(external.projects(), local_icons)
         state.stats_cache.clear()
         db.purge_old_checks()
         state.last_run = _iso_now()
@@ -290,6 +296,7 @@ def _get_stats(window):
 @contextlib.asynccontextmanager
 async def lifespan(app):
     db.init_db()
+    external.seed()
     raw_catalog = catalog_mod.load_catalog(db.CATALOG_PATH)
     state.catalog = catalog_mod.public_catalog(raw_catalog)
     state.categories = state.catalog.get("categories", [])
@@ -507,5 +514,43 @@ async def scopes():
                 "group_title": titles.get(service.get("category") or "", ""),
             }
             for service in state.catalog.get("services", [])
+        ] + [
+            {
+                "slug": f"external-{project['id']}",
+                "name": project["name"],
+                "group": f"external-{project['company']}",
+                "group_title": f"Proyectos externos · {project['company']}",
+            }
+            for project in external.projects()
         ]
     }
+
+
+@app.get("/api/external-projects")
+async def external_projects():
+    icons = {
+        service["slug"]: service.get("icon")
+        for service in state.catalog.get("services", [])
+    }
+    projects = external.projects()
+    for project in projects:
+        project["icon"] = icons.get(project["local_slug"])
+        project["icon_url"] = (
+            f"/api/external-projects/{project['id']}/icon"
+            if not project["icon"] and project["icon_type"]
+            and project["url"] == project["icon_checked_url"] else None
+        )
+    return {
+        "projects": projects,
+        "last_run": state.last_run,
+        "last_error": state.last_error,
+        "refresh_ms": POLL_INTERVAL * 1000,
+    }
+
+
+@app.get("/api/external-projects/{project_id}/icon")
+async def external_project_icon(project_id: int):
+    icon = external.icon(project_id)
+    if not icon:
+        raise HTTPException(status_code=404, detail="favicon no disponible")
+    return Response(content=icon["icon_data"], media_type=icon["icon_type"])
